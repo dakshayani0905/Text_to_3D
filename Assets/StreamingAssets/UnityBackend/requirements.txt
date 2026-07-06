@@ -1,0 +1,68 @@
+# ===============================
+# Unity + TRELLIS Backend
+# Python 3.10
+# CUDA 11.8
+# ===============================
+
+# -------------------------------
+# FastAPI Backend
+# -------------------------------
+fastapi==0.112.2
+uvicorn==0.30.6
+pydantic==2.8.2
+python-multipart==0.0.20
+aiofiles==24.1.0
+
+# -------------------------------
+# Hugging Face
+# -------------------------------
+huggingface-hub==0.34.4
+transformers==4.44.2
+diffusers==0.30.3
+accelerate==1.13.0
+safetensors==0.4.5
+sentencepiece==0.2.0
+
+# -------------------------------
+# Core
+# -------------------------------
+numpy==1.26.4
+scipy==1.15.3
+einops==0.8.0
+easydict==1.13
+tqdm==4.67.1
+Pillow==10.4.0
+imageio==2.37.0
+PyYAML==6.0.2
+requests==2.32.3
+
+# -------------------------------
+# Vision
+# -------------------------------
+opencv-python-headless==4.10.0.84
+rembg==2.0.60
+onnxruntime==1.20.1
+
+# -------------------------------
+# Mesh Processing
+# -------------------------------
+trimesh==4.5.0
+open3d==0.18.0
+xatlas==0.0.9
+pymeshfix==0.17.0
+pyvista==0.44.2
+pygltflib==1.16.2
+plyfile==1.1
+
+# -------------------------------
+# Rendering
+# -------------------------------
+moderngl==5.12.0
+glcontext==3.0.0
+
+# -------------------------------
+# Utilities
+# -------------------------------
+networkx==3.3
+igraph==0.11.8
+fire==0.7.0
