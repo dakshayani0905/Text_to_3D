@@ -10,10 +10,11 @@ using System.Threading.Tasks;
 public class TrellisGeneratorEditor : EditorWindow
 {
     private string prompt = "";
-    private int qualityIndex = 1;
+    private int qualityIndex = 0;
 
     private string[] qualities =
     {
+        "Auto",
         "Fast",
         "Balanced",
         "Ultra"
@@ -25,6 +26,7 @@ public class TrellisGeneratorEditor : EditorWindow
     private Process backendProcess;
     private bool backendStarted = false;
     private bool generationRunning = false;
+    private bool startingBackend = false;
     [System.Serializable]
     public class PromptData
     {
@@ -99,20 +101,91 @@ public class TrellisGeneratorEditor : EditorWindow
 
         GUILayout.Space(10);
 
-        if (
-            GUILayout.Button(
-                "Generate",
-                GUILayout.Height(40)
-            )
-        )
+        if (startingBackend)
         {
-            Generate();
+            GUI.enabled = false;
+
+            GUILayout.Button(
+                "Starting Backend...",
+                GUILayout.Height(40)
+            );
+
+            GUI.enabled = true;
         }
-    }
+        else if (!generationRunning)
+        {
+            if (GUILayout.Button("Generate", GUILayout.Height(40)))
+            {
+                Generate();
+            }
+        }
+        else
+        {
+            if (GUILayout.Button("Cancel Generation", GUILayout.Height(40)))
+            {
+                CancelGeneration();
+            }
+        }
+
+    }   // <-- THIS closes OnGUI()
+
+
     private async Task<bool> StartBackend()
 {
-    if (backendStarted)
-        return true;
+    //--------------------------------------------------
+    // Check if backend is already running
+   //--------------------------------------------------
+
+   try
+   {
+       using (UnityWebRequest request =
+              UnityWebRequest.Get("http://127.0.0.1:8000/"))
+       {
+           var operation = request.SendWebRequest();
+
+           while (!operation.isDone)
+               await Task.Yield();
+
+           if (request.result == UnityWebRequest.Result.Success)
+           {
+               backendStarted = true;
+
+               Debug.Log("TRELLIS Backend Already Running");
+
+               return true;
+           }
+       }
+   }
+   catch
+   {
+   }
+    //--------------------------------------------------
+    // Backend already running?
+    //--------------------------------------------------
+    if (backendProcess != null)
+    {
+        try
+        {
+            if (!backendProcess.HasExited)
+            {
+                backendStarted = true;
+                return true;
+            }
+
+            backendProcess.Dispose();
+            backendProcess = null;
+            backendStarted = false;
+        }
+        catch
+        {
+            backendProcess = null;
+            backendStarted = false;
+        }
+    }
+
+    //--------------------------------------------------
+    // Paths
+    //--------------------------------------------------
 
     string pythonPath =
         Path.Combine(
@@ -142,6 +215,10 @@ public class TrellisGeneratorEditor : EditorWindow
         return false;
     }
 
+    //--------------------------------------------------
+    // Start Python Backend
+    //--------------------------------------------------
+
     backendProcess = new Process();
 
     backendProcess.StartInfo.FileName = pythonPath;
@@ -159,16 +236,28 @@ public class TrellisGeneratorEditor : EditorWindow
     backendProcess.StartInfo.RedirectStandardOutput = true;
     backendProcess.StartInfo.RedirectStandardError = true;
 
-    backendProcess.OutputDataReceived += (s, e) =>
+    backendProcess.EnableRaisingEvents = true;
+
+    backendProcess.OutputDataReceived += (sender, e) =>
     {
         if (!string.IsNullOrEmpty(e.Data))
             Debug.Log("[Backend] " + e.Data);
     };
 
-    backendProcess.ErrorDataReceived += (s, e) =>
+    backendProcess.ErrorDataReceived += (sender, e) =>
     {
         if (!string.IsNullOrEmpty(e.Data))
             Debug.LogError("[Backend] " + e.Data);
+    };
+
+    backendProcess.Exited += (sender, e) =>
+    {
+        backendStarted = false;
+
+        backendProcess?.Dispose();
+        backendProcess = null;
+
+        Debug.LogWarning("Backend Process Exited");
     };
 
     backendProcess.Start();
@@ -176,30 +265,72 @@ public class TrellisGeneratorEditor : EditorWindow
     backendProcess.BeginOutputReadLine();
     backendProcess.BeginErrorReadLine();
 
+    //--------------------------------------------------
+    // Wait for FastAPI
+    //--------------------------------------------------
+    
+
     for (int i = 0; i < 30; i++)
     {
         await Task.Delay(1000);
 
-        UnityWebRequest request =
-            UnityWebRequest.Get("http://127.0.0.1:8000/");
-
-        var op = request.SendWebRequest();
-
-        while (!op.isDone)
-            await Task.Yield();
-
-        if (request.result == UnityWebRequest.Result.Success)
+        using (UnityWebRequest request =
+               UnityWebRequest.Get("http://127.0.0.1:8000/"))
         {
-            backendStarted = true;
-            Debug.Log("Backend Started");
-            return true;
+            var operation = request.SendWebRequest();
+
+            while (!operation.isDone)
+                await Task.Yield();
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                backendStarted = true;
+
+                Debug.Log("TRELLIS Backend Started");
+
+                return true;
+            }
         }
     }
 
     Debug.LogError("Backend did not respond.");
+
+    KillBackend();
+
     return false;
-}
+
     
+}
+    private void KillBackend()
+    {
+        EditorApplication.update -= CheckProgress;
+        EditorApplication.update -= CheckResult;
+
+        try
+        {
+            if (backendProcess != null)
+            {
+                if (!backendProcess.HasExited)
+                {
+                    backendProcess.Kill();
+                    backendProcess.WaitForExit();
+                }
+
+                backendProcess.Dispose();
+                backendProcess = null;
+            }
+        }
+        catch
+        {
+        }
+
+        backendStarted = false;
+        generationRunning = false;
+        startingBackend = false;
+
+        Debug.Log("TRELLIS Backend Terminated");
+    }
+
     private async void Generate()
     {
         if (string.IsNullOrWhiteSpace(prompt))
@@ -208,35 +339,41 @@ public class TrellisGeneratorEditor : EditorWindow
             Repaint();
             return;
         }
-        if(generationRunning)
+
+        if (generationRunning || startingBackend)
         {
-            status = "Generation Already Running";
-            Repaint();
             return;
         }
+
+        startingBackend = true;
+
         status = "Starting Backend...";
+
         Repaint();
 
         bool started = await StartBackend();
 
         if (!started)
         {
+            startingBackend = false;
+
             status = "Backend Failed To Start";
+
             Repaint();
+
             return;
         }
-       
+
+        startingBackend = false;
 
         PromptData data = new PromptData();
 
         data.prompt = prompt;
         data.quality = qualities[qualityIndex];
 
-        string json =
-            JsonUtility.ToJson(data);
+        string json = JsonUtility.ToJson(data);
 
-        byte[] body =
-            Encoding.UTF8.GetBytes(json);
+        byte[] body = Encoding.UTF8.GetBytes(json);
 
         UnityWebRequest request =
             new UnityWebRequest(
@@ -255,55 +392,82 @@ public class TrellisGeneratorEditor : EditorWindow
             "application/json"
         );
 
-        var operation =
-            request.SendWebRequest();
+        var operation = request.SendWebRequest();
 
         operation.completed += _ =>
         {
-            if (request.result ==
-                UnityWebRequest.Result.Success)
+            try
             {
-                status =
-                    "Generation Started";
-                generationRunning = true;
+                if (request.result == UnityWebRequest.Result.Success)
+                {
+                    status = "Generation Started";
 
-                progress = 0;
-                progressMessage =
-                    "Starting";
+                    generationRunning = true;
 
-                EditorApplication.update -= CheckResult;
-                EditorApplication.update -= CheckProgress;
+                    progress = 0;
 
-                EditorApplication.update += CheckResult;
-                EditorApplication.update += CheckProgress;
+                    progressMessage = "Starting";
+
+                    EditorApplication.update -= CheckResult;
+                    EditorApplication.update -= CheckProgress;
+
+                    EditorApplication.update += CheckResult;
+                    EditorApplication.update += CheckProgress;
+                }
+                else
+                {
+                    status = request.error;
+
+                    generationRunning = false;
+
+                    startingBackend = false;
+
+                    KillBackend();
+
+                    Debug.LogError(request.error);
+
+                    if (request.downloadHandler != null)
+                        Debug.LogError(request.downloadHandler.text);
+                }
+
+                Repaint();
             }
-            else
+            finally
             {
-                status = request.error;
-
-                UnityEngine.Debug.LogError(request.error);
-
-                if (request.downloadHandler != null)
-                    UnityEngine.Debug.LogError(request.downloadHandler.text);
+                request.Dispose();
             }
-
-            Repaint();
         };
-        
-        
     }
 
-    private void CheckResult()
+    private void CancelGeneration()
     {
-        UnityWebRequest request =
-            UnityWebRequest.Get(
-                "http://127.0.0.1:8000/result"
-            );
+        EditorApplication.update -= CheckProgress;
+        EditorApplication.update -= CheckResult;
 
-        var operation =
-            request.SendWebRequest();
+        generationRunning = false;
+        startingBackend = false;
 
-        operation.completed += _ =>
+        progress = 0;
+        progressMessage = "Cancelled";
+        status = "Generation Cancelled";
+
+        KillBackend();
+
+        Repaint();
+    }
+    private void CheckResult()
+{
+    UnityWebRequest request =
+        UnityWebRequest.Get(
+            "http://127.0.0.1:8000/result"
+        );
+
+    var operation =
+        request.SendWebRequest();
+
+    operation.completed += _ =>
+    {
+        try
         {
             if (request.result ==
                 UnityWebRequest.Result.Success)
@@ -313,42 +477,77 @@ public class TrellisGeneratorEditor : EditorWindow
                         request.downloadHandler.text
                     );
 
-                if (result.status ==
-    "completed")
+                if (result == null)
+                    return;
+
+                if (result.status == "completed")
                 {
-                    status =
-                        "Model Imported Successfully";
+                    status = "Model Imported Successfully";
 
                     progress = 100;
 
-                    progressMessage =
-                        "Completed";
+                    progressMessage = "Completed";
+
                     ImportGeneratedModel();
+
+                    KillBackend();
+
+                    generationRunning = false;
+                    startingBackend = false;
+
                     EditorApplication.update -= CheckResult;
                     EditorApplication.update -= CheckProgress;
-                    generationRunning = false;
+
                     Repaint();
 
                     return;
                 }
 
-                if (result.status ==
-                    "failed")
+                if (result.status == "cancelled")
                 {
-                    status =
-                        "Generation Failed";
+                    status = "Generation Cancelled";
 
-                    EditorApplication.update -=
-                        CheckResult;
-
-                    EditorApplication.update -=
-                        CheckProgress;
                     generationRunning = false;
+                    startingBackend = false;
+
+                    progress = 0;
+
+                    progressMessage = "Cancelled";
+
+                    KillBackend();
+
+                    EditorApplication.update -= CheckResult;
+                    EditorApplication.update -= CheckProgress;
+
                     Repaint();
+
+                    return;
+                }
+
+                if (result.status == "failed")
+                {
+                    status = "Generation Failed";
+
+                    generationRunning = false;
+                    startingBackend = false;
+
+                    KillBackend();
+
+                    EditorApplication.update -= CheckResult;
+                    EditorApplication.update -= CheckProgress;
+
+                    Repaint();
+
+                    return;
                 }
             }
-        };
-    }
+        }
+        finally
+        {
+            request.Dispose();
+        }
+    };
+}
 
     private void CheckProgress()
     {
@@ -362,87 +561,73 @@ public class TrellisGeneratorEditor : EditorWindow
 
         operation.completed += _ =>
         {
-            if (request.result ==
-                UnityWebRequest.Result.Success)
+            try
             {
-                ProgressData data =
-                    JsonUtility.FromJson<ProgressData>(
-                        request.downloadHandler.text
-                    );
+                if (request.result ==
+                    UnityWebRequest.Result.Success)
+                {
+                    ProgressData data =
+                        JsonUtility.FromJson<ProgressData>(
+                            request.downloadHandler.text
+                        );
 
-                progress =
-                    data.percent;
+                    if (data != null)
+                    {
+                        progress =
+                            data.percent;
 
-                progressMessage =
-                    data.message;
+                        progressMessage =
+                            data.message;
 
-                Repaint();
+                        Repaint();
+                    }
+                }
+            }
+            finally
+            {
+                request.Dispose();
             }
         };
     }
-    private void ImportGeneratedModel()
+    private async void ImportGeneratedModel()
     {
-        
-        string folder =
-            "Assets/GeneratedModels";
+        string glbPath = "Assets/Prefabs/output.glb";
 
-        if (
-            !AssetDatabase.IsValidFolder(
-                folder
-            )
-        )
+        // Refresh only once
+        AssetDatabase.Refresh();
+
+        // Wait for UnityGLTF to finish importing
+        for (int i = 0; i < 30; i++)
         {
-            AssetDatabase.CreateFolder(
-                "Assets",
-                "GeneratedModels"
-            );
+            await Task.Delay(500);
+
+            GameObject model =
+                AssetDatabase.LoadAssetAtPath<GameObject>(glbPath);
+
+            if (model != null)
+            {
+                string prefabPath = "Assets/Prefabs/output.prefab";
+
+                PrefabUtility.SaveAsPrefabAsset(
+                    model,
+                    prefabPath
+                );
+
+                EditorSceneManager.MarkAllScenesDirty();
+
+                Debug.Log("Prefab created successfully.");
+
+                return;
+            }
         }
 
-        string sourcePath =
-            Path.Combine(
-                Application.streamingAssetsPath,
-                "UnityBackend",
-                "generated",
-                "output.glb"
-            );
-
-        string targetPath =
-            "Assets/GeneratedModels/output.glb";
-
-        if (File.Exists(sourcePath))
-        {
-            if(File.Exists(targetPath))
-            {
-                File.Delete(targetPath);
-            }
-
-            try
-            {
-                File.Copy(sourcePath,targetPath,true);
-            }
-            catch(System.Exception e)
-            {
-                UnityEngine.Debug.LogError(e.Message);
-            }
-
-            AssetDatabase.Refresh();
-
-            EditorSceneManager.MarkAllScenesDirty();
-
-            UnityEngine.Debug.Log(
-                "GLB Imported Successfully"
-            );
-        }
-        else
-        {
-            UnityEngine.Debug.LogError(
-                "output.glb not found"
-            );
-        }
+        Debug.LogError("Unity never imported output.glb");
     }
     private void OnDestroy()
     {
         EditorApplication.update -= CheckProgress;
         EditorApplication.update -= CheckResult;
+
+        KillBackend();
     }
 }

@@ -1,7 +1,7 @@
 import sys
 import os
 import torch
-
+import cancel
 from progress import progress_status
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -110,12 +110,18 @@ def get_quality_settings(quality):
                 "simplify": 0.98,
                 "texture_size": 4096
             }
+def check_cancel():
 
+    if cancel.cancel_requested:
 
+        progress_status["message"] = "Generation Cancelled"
+        progress_status["percent"] = 0
+
+        raise Exception("Generation Cancelled")
 def generate_model(prompt, quality):
 
     load_model()
-
+    check_cancel()
     settings = get_quality_settings(
         quality
     )
@@ -141,11 +147,12 @@ def generate_model(prompt, quality):
     progress_status["percent"] = 25
 
     torch.cuda.empty_cache()
+    check_cancel()
     outputs = pipeline.run(
         prompt,
         seed=1
     )
-
+    check_cancel()
     progress_status["message"] = \
         "Generating Geometry"
 
@@ -159,10 +166,11 @@ def generate_model(prompt, quality):
         "Converting To Mesh"
 
     progress_status["percent"] = 70
-    
+    check_cancel()
+
     glb = postprocessing_utils.to_glb(
-        outputs['gaussian'][0],
-        outputs['mesh'][0],
+        outputs["gaussian"][0],
+        outputs["mesh"][0],
         simplify=settings["simplify"],
         fill_holes=False,
         texture_size=settings["texture_size"]
@@ -177,9 +185,23 @@ def generate_model(prompt, quality):
 
     progress_status["percent"] = 85
 
+    # --------------------------------------------------
+    # Save directly inside Unity Assets/GeneratedModels
+    # --------------------------------------------------
+
+    PROJECT_ROOT = os.path.abspath(
+        os.path.join(
+            BASE_DIR,
+            "..",
+            "..",
+            ".."
+        )
+    )
+
     GENERATED_DIR = os.path.join(
-        BASE_DIR,
-        "generated"
+        PROJECT_ROOT,
+        "Assets",
+        "Prefabs"
     )
 
     os.makedirs(
@@ -192,17 +214,22 @@ def generate_model(prompt, quality):
         "output.glb"
     )
 
-    print(
-        "EXPORTING TO:",
-        os.path.abspath(output_path)
-    )
-
-    progress_status["message"] = \
-        "Exporting Model"
-
+    progress_status["message"] = "Exporting Model"
     progress_status["percent"] = 95
-    
+
+    check_cancel()
+
+    print("=" * 60)
+    print("PROJECT ROOT :", PROJECT_ROOT)
+    print("GENERATED DIR:", GENERATED_DIR)
+    print("OUTPUT PATH  :", output_path)
+    print("=" * 60)
+
+    print("Saving GLB...")
+
     glb.export(output_path)
+
+    print("GLB Saved Successfully")
 
     del outputs
     del glb

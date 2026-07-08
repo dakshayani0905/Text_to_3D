@@ -7,6 +7,8 @@ import torch
 from progress import progress_status
 from trellis_generator import generate_model
 from model_check import is_model_downloaded
+import cancel
+
 app = FastAPI()
 
 generation_result = {
@@ -15,14 +17,25 @@ generation_result = {
 }
 progress_status["message"] = "Starting"
 progress_status["percent"] = 0
-cancel_requested = False
+
 # ==========================================
 # GENERATED MODELS FOLDER
 # ==========================================
 
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        ".."
+    )
+)
+
+
 GENERATED_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "generated"
+    PROJECT_ROOT,
+    "Assets",
+    "Prefabs"
 )
 
 os.makedirs(
@@ -93,9 +106,8 @@ def run_generation(prompt, quality):
 def generate(data: PromptData):
 
     global generation_result
-    global cancel_requested
 
-    cancel_requested = False
+    cancel.cancel_requested = False
 
     # RESET PROGRESS AFTER CANCEL
     progress_status["message"] = "Starting Generation"
@@ -153,12 +165,11 @@ def gpu():
         "message": "CUDA GPU Not Found"
     }
 @app.post("/cancel")
-def cancel():
+def cancel_generation():
 
-    global cancel_requested
     global generation_result
 
-    cancel_requested = True
+    cancel.cancel_requested = True
 
     generation_result = {
         "status": "cancelled"
