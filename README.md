@@ -1,76 +1,251 @@
-# AI XR TextTo3D
+# TRELLIS Unity Plugin
+### AI-Powered Text-to-3D Asset Generation for Unity
 
-A Unity project integrating a local FastAPI backend for AI-driven 3D model generation from text prompts. The repo combines Unity frontend UI, GLTFast import support, and a Python-based TRELLIS backend to generate, serve, and load GLB models in the Unity editor.
+Generate high-quality 3D assets directly inside Unity using natural language prompts. This project integrates **Microsoft TRELLIS** with the **Unity Editor** through a **FastAPI backend**, enabling AI-powered text-to-3D generation without leaving the Unity environment.
 
-## Project Overview
+---
 
-- Unity frontend with UI and XR-ready package support.
-- Backend process launched from Unity at runtime via `BackendManager`.
-- FastAPI service in `Assets/StreamingAssets/UnityBackend/main.py`.
-- Generated models are written to `Assets/StreamingAssets/UnityBackend/generated/output.glb`.
-- `APIManager` sends text prompts and quality choices to the backend.
+## Features
 
-## Key Components
+- Text-to-3D generation using Microsoft TRELLIS
+- Custom Unity Editor Tool (`Tools → TRELLIS Generator`)
+- Automatic Python backend startup
+- Automatic backend shutdown
+- GPU detection
+- Auto quality selection based on GPU VRAM
+- Manual quality modes (Fast, Balanced, Ultra)
+- Real-time generation progress
+- Generate directly inside Unity
+- Automatic GLB export
+- Automatic Prefab creation
+- Cancel generation support
 
-- `Assets/Scripts/BackendManager.cs` - starts/stops the Python backend and checks service readiness.
-- `Assets/Scripts/APIManager.cs` - sends prompts to `/generate`, polls `/progress`, and shows generation status.
-- `Assets/Scripts/ModelLoader.cs` - imports generated GLB output into the Unity scene.
-- `Assets/StreamingAssets/UnityBackend/main.py` - FastAPI backend entrypoint.
-- `Assets/StreamingAssets/UnityBackend/requirements.txt` - Python dependencies for the backend.
+---
 
-## Requirements
+## Demo Workflow
 
-- Unity 2022.3.x (project assets and packages are configured for Unity 2022.3).
-- Python 3.10 installed.
-- Local Python virtual environment at `backend/venv/` with dependencies installed.
-- Optional: CUDA GPU support for PyTorch if available.
+```
+User Prompt
+      │
+      ▼
+Unity Editor Window
+      │
+      ▼
+FastAPI Backend
+      │
+      ▼
+TRELLIS Text-to-3D Pipeline
+      │
+      ▼
+Mesh Generation
+      │
+      ▼
+Texture Baking
+      │
+      ▼
+Export output.glb
+      │
+      ▼
+Unity Import
+      │
+      ▼
+Prefab Creation
+```
 
-## Setup
+---
 
-1. Open the project in Unity by selecting the root folder or `AI_XR_TextTo3D.sln`.
-2. Create a Python virtual environment under the repo root:
-   ```bash
-   python -m venv backend/venv
-   ```
-3. Activate the venv and install backend dependencies:
-   - Windows (PowerShell):
-     ```powershell
-     .\backend\venv\Scripts\Activate.ps1
-     pip install -r "Assets/StreamingAssets/UnityBackend/requirements.txt"
-     ```
-   - Windows (cmd):
-     ```cmd
-     backend\venv\Scripts\activate.bat
-     pip install -r "Assets\StreamingAssets\UnityBackend\requirements.txt"
-     ```
-4. Confirm `backend/venv/Scripts/python.exe` exists and `Assets/StreamingAssets/UnityBackend/main.py` is present.
+# Project Structure
 
-## Usage
+```
+AI_XR_TextTo3D
+│
+├── Assets
+│   ├── Editor
+│   │   └── TrellisGeneratorEditor.cs
+│   │
+│   ├── Prefabs
+│   │   ├── output.glb
+│   │   └── output.prefab
+│   │
+│   ├── StreamingAssets
+│   │   └── UnityBackend
+│   │       ├── main.py
+│   │       ├── trellis_generator.py
+│   │       ├── progress.py
+│   │       ├── cancel.py
+│   │       ├── model_check.py
+│   │       └── trellis/
+│   │
+│   └── Scripts
+│
+├── backend
+│   └── venv
+│
+└── Packages
+```
 
-1. In Unity, open the scene containing the generation UI.
-2. Enter a text prompt and select generation quality.
-3. Click the generate button to start the backend model creation flow.
-4. The backend exposes:
-   - `/generate` to start generation
-   - `/progress` for progress updates
-   - `/result` for final model information
-   - `/models/output.glb` as the generated GLB asset
-5. The generated GLB is loaded via `ModelLoader` and displayed in the scene.
+---
 
-## Notes
+# Technologies Used
 
-- The backend uses FastAPI and runs on `http://127.0.0.1:8000`.
-- The Unity project includes `com.unity.cloud.gltfast` for GLB import workflows.
-- If the backend fails to start, check that Python is installed and the virtual environment is created correctly.
+### Unity
+- Unity 2022.3 LTS
+- C#
+- Unity Editor API
 
-## Repo Structure
+### Backend
+- Python 3.10
+- FastAPI
+- Uvicorn
 
-- `Assets/` - Unity project assets and scripts.
-- `Assets/StreamingAssets/UnityBackend/` - backend FastAPI code and model generation resources.
-- `backend/venv/` - expected local Python virtual environment.
-- `Packages/manifest.json` - Unity package dependencies.
-- `AI_XR_TextTo3D.sln` - Unity solution file.
+### AI
+- Microsoft TRELLIS
+- PyTorch
+- CUDA
 
-## Contribution
+### 3D
+- UnityGLTF
+- GLB Format
 
-Add issues or improvements by editing Unity scripts, backend generation logic, or documentation for setup and usage.
+---
+
+# Quality Modes
+
+| Mode | Description |
+|------|-------------|
+| Auto | Automatically selects the best quality based on GPU VRAM |
+| Fast | 1024 texture resolution, optimized for lower-end GPUs |
+| Balanced | 2048 texture resolution with balanced performance |
+| Ultra | 4096 texture resolution for highest quality output |
+
+---
+
+# Backend API
+
+### Generate Model
+
+```
+POST /generate
+```
+
+```json
+{
+    "prompt": "A wooden chair",
+    "quality": "Auto"
+}
+```
+
+---
+
+### Progress
+
+```
+GET /progress
+```
+
+---
+
+### Result
+
+```
+GET /result
+```
+
+---
+
+### GPU Check
+
+```
+GET /gpu
+```
+
+---
+
+### Cancel Generation
+
+```
+POST /cancel
+```
+
+---
+
+# How It Works
+
+1. Open **Tools → TRELLIS Generator**.
+2. Enter a text prompt.
+3. Select a quality mode.
+4. Click **Generate**.
+5. The backend starts automatically.
+6. TRELLIS generates the 3D model.
+7. The generated model is exported as:
+
+```
+Assets/Prefabs/output.glb
+```
+
+8. Unity imports the model.
+9. A prefab is automatically created.
+10. The backend is terminated after completion.
+
+---
+
+# Example Prompt
+
+```
+A medieval knight helmet made of polished steel with engraved patterns and realistic proportions.
+```
+
+---
+
+# Requirements
+
+- Unity 2022.3 LTS
+- Python 3.10
+- NVIDIA CUDA GPU
+- Windows 10/11
+
+---
+
+# Current Features
+
+- AI-powered Text-to-3D generation
+- Automatic backend management
+- GPU detection
+- Automatic quality selection
+- Progress tracking
+- GLB export
+- Unity integration
+- Prefab generation
+- Cancel generation
+
+---
+
+# Future Improvements
+
+- Multiple model generation
+- Batch generation
+- Prompt history
+- Texture editing
+- Material customization
+- Animation support
+- One-click Unity Package installation
+
+---
+
+# Author
+
+**Dakshayani K**
+**Annie Christian**
+**Munendra P**
+B.Tech Computer Science Engineering
+
+GITAM University, Visakhapatnam
+
+---
+
+# Acknowledgements
+
+- Microsoft TRELLIS
+- Unity Technologies
+- FastAPI
+- PyTorch
